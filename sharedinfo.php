@@ -349,7 +349,8 @@ if (is_numeric($data['memoryInfo']['totalKByte']))
         </dl>
 
         <hr>
-        <a href="?json">Show Raw JSON (much more infos there!)</a>
+        <a href="?json">Show Raw JSON (much more infos there!)</a> |
+        <a href="https://github.com/perryflynn/sharedinfo" target="_blank">Code on github</a>
 
     </body>
 </html>
