@@ -108,6 +108,9 @@ function smartNumber($str)
     return (float)$str;
 }
 
+/**
+ * Enforce a list of fields in the given input array
+ */
 function ensureArray($input, array $fields)
 {
     $result = array();
