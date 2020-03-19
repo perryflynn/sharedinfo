@@ -314,14 +314,13 @@ if (is_numeric($data['loadavg']['5m']) && is_numeric($data['cpuInfo']['coreCount
 if (is_numeric($data['memoryInfo']['totalKByte']))
 {
     $total = $data['memoryInfo']['totalKByte'];
-    $free = $data['memoryInfo']['freeKByte'];
-    $buffers = $data['memoryInfo']['buffersKByte'];
-    $cached = $data['memoryInfo']['cachedKByte'];
+    $available = $data['memoryInfo']['availableKByte'];
     $committed = $data['memoryInfo']['committedKByte'];
 
     $properties[] = array("Total Memory", number_format($total/1024, 2)." MByte");
-    $properties[] = array("Free Memory", number_format($free/1024, 2)." MByte");
-    $properties[] = array("Used Memory", number_format(($free+$buffers+$cached)/1024, 2)." MByte");
+    $properties[] = array("Available Memory", number_format($available/1024, 2)." MByte");
+    $properties[] = array("Used Memory", number_format(($total-$available)/1024, 2)." MByte");
+    $properties[] = array("Committed Memory", number_format($committed/1024, 2)." MByte");
 }
 
 ?>
