@@ -16,6 +16,7 @@ set_error_handler(function($errno, $errstr, $errfile, $errline, $errcontext)
     throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
 });
 
+
 /**
  * Try multiple operations until one is successful
  */
@@ -33,6 +34,7 @@ function tryThings(array $things)
 
     return null;
 }
+
 
 /**
  * Try multiple ways to execute shell commands and return output
@@ -66,6 +68,7 @@ function smartExec($cmd)
     ));
 }
 
+
 /**
  * Try multiple ways to get the content of a file
  */
@@ -76,6 +79,7 @@ function smartFile($file)
         function() use($file) { return smartExec("cat ".escapeshellarg($file)); }
     ));
 }
+
 
 /**
  * Just do a one-line-regex-match
@@ -89,6 +93,7 @@ function smartMatch($string, $regex, $group = 1)
     }
     return null;
 }
+
 
 /**
  * String to integer or float
@@ -107,6 +112,7 @@ function smartNumber($str)
 
     return (float)$str;
 }
+
 
 /**
  * Enforce a list of fields in the given input array
@@ -128,6 +134,22 @@ function ensureArray($input, array $fields)
 
     return $result;
 }
+
+/**
+ * Find element in array
+ */
+function array_find($xs, $f)
+{
+    foreach ($xs as $x)
+    {
+        if ($f($x) === true)
+        {
+            return $x;
+        }
+    }
+    return null;
+}
+
 
 /**
  * Collect data
@@ -275,14 +297,145 @@ $data = array(
     "bootTimeUnixEpoch" => $bootTime,
     "uptimeSeconds" => $uptime,
     "runtimeOfThisScriptSeconds" => microtime(true) - $startTime,
+    "snapshotTime" => time(),
 );
 
+
+/**
+ * Snapshots
+ */
+
+$snapshotFile = __DIR__."/snapshots.json";
+$snapshotInterval = 10*60;
+$snapshotIntervalMax = 30*60;
+$snapshots = array(
+    "lastSnapshot" => 0,
+    "snapshots" => array(),
+);
+
+// load snapshots
+if (is_file($snapshotFile))
+{
+    $snapshots = json_decode(file_get_contents($snapshotFile), true);
+    krsort($snapshots['snapshots']);
+}
+
+// add new snapshot
+if ($snapshots['lastSnapshot'] < time() - $snapshotInterval)
+{
+    // add new snapshot
+    $snapshots['snapshots'][$data['snapshotTime']] = $data;
+    $snapshots['lastSnapshot'] = $data['snapshotTime'];
+
+    // sort and slice existing snapshots
+    krsort($snapshots['snapshots']);
+    $snapshots['snapshots'] = array_slice($snapshots['snapshots'], 0, 5, true);
+
+    // save new snapshot file
+    file_put_contents($snapshotFile, json_encode($snapshots));
+}
+
+// find lastest, suitable snapshot
+$snapData = array_find($snapshots['snapshots'], function($item) use($snapshotInterval, $snapshotIntervalMax)
+{
+    $diff = time() - $item['snapshotTime'];
+    return $diff >= $snapshotInterval && $diff <= $snapshotIntervalMax;
+});
+
+// if no suitable, use latest
+if (is_null($snapData))
+{
+    $keys = array_keys($snapshots['snapshots']);
+    if (count($keys) > 0)
+    {
+        rsort($keys);
+        $snapData = $snapshots['snapshots'][$keys[0]];
+    }
+}
+
+
+/**
+ * Snapshot-based stats
+ */
+
+/*
+    https://stackoverflow.com/a/23376195
+
+    $psStatFields = array('user', 'nice', 'system', 'idle', 'ioWait', 'irq', 'softIrq', 'steal', 'guest', 'guestNice');
+
+    PrevIdle = previdle + previowait
+    Idle = idle + iowait
+
+    PrevNonIdle = prevuser + prevnice + prevsystem + previrq + prevsoftirq + prevsteal
+    NonIdle = user + nice + system + irq + softirq + steal
+
+    PrevTotal = PrevIdle + PrevNonIdle
+    Total = Idle + NonIdle
+
+    # differentiate: actual value minus the previous one
+    totald = Total - PrevTotal
+    idled = Idle - PrevIdle
+
+    CPU_Percentage = (totald - idled)/totald
+*/
+
+$psPercentages = array(
+    "percentageTimespanSeconds" => null,
+    "busyPercent" => null,
+    "idlePercent" => null,
+    "ioWaitPercent" => null,
+);
+
+if (is_numeric($data['procStat']['idle']) && is_numeric($snapData['procStat']['idle']))
+{
+    $psIdleNow = $data['procStat']['idle'];
+    $psIdleSnap = $snapData['procStat']['idle'];
+    $psIdleDiff = $psIdleNow - $psIdleSnap;
+
+    $psBusyNow = $data['procStat']['user'] + $data['procStat']['nice'] + $data['procStat']['system'] + $data['procStat']['ioWait'] + $data['procStat']['irq'] + $data['procStat']['softIrq'] + $data['procStat']['steal'] + $data['procStat']['guest'] + $data['procStat']['guestNice'];
+    $psBusySnap = $snapData['procStat']['user'] + $snapData['procStat']['nice'] + $snapData['procStat']['system'] + $snapData['procStat']['ioWait'] + $snapData['procStat']['irq'] + $snapData['procStat']['softIrq'] + $snapData['procStat']['steal'] + $snapData['procStat']['guest'] + $snapData['procStat']['guestNice'];
+    $psBusyDiff = $psBusyNow - $psBusySnap;
+
+    $psIoWaitNow = $data['procStat']['ioWait'];
+    $psIoWaitSnap = $snapData['procStat']['ioWait'];
+    $psIoWaitDiff = $psIoWaitNow - $psIoWaitSnap;
+
+    $psStealNow = $data['procStat']['steal'];
+    $psStealSnap = $snapData['procStat']['steal'];
+    $psStealDiff = $psStealNow - $psStealSnap;
+
+    $psTotalNow = $psIdleNow + $psBusyNow;
+    $psTotalSnap = $psIdleSnap + $psBusySnap;
+    $psTotalDiff = $psTotalNow - $psTotalSnap;
+
+    $snapTimeSpan = $data['snapshotTime'] - $snapData['snapshotTime'];
+
+    $psPercentages = array(
+        "percentageTimespanSeconds" => $snapTimeSpan,
+        "busyPercent" => 100 - (100 * $psIdleDiff / $psTotalDiff),
+        "idlePercent" => 100 * $psIdleDiff / $psTotalDiff,
+        "ioWaitPercent" => 100 * $psIoWaitDiff / $psTotalDiff,
+        "stealPercent" => 100 * $psStealDiff / $psTotalDiff,
+    );
+}
+
+$data['psPercentages'] = $psPercentages;
+
+
+/**
+ * JSON Output
+ */
 if (isset($_GET['json']))
 {
     header("Content-Type: application/json; charset=utf-8", true);
     echo json_encode($data, JSON_PRETTY_PRINT);
     exit;
 }
+
+
+/**
+ * HTML Output
+ */
 
 // HTML Properties
 $properties = array();
@@ -308,7 +461,18 @@ if (is_numeric($data['loadavg']['1m']))
 if (is_numeric($data['loadavg']['5m']) && is_numeric($data['cpuInfo']['coreCount']))
 {
     $usage = 100 / $data['cpuInfo']['coreCount'] * $data['loadavg']['5m'];
-    $properties[] = array("System usage", number_format($usage, 2)."%");
+    $properties[] = array("System usage (5 minutes load average)", number_format($usage, 2)."%");
+}
+
+if (is_numeric($data['psPercentages']['percentageTimespanSeconds']))
+{
+    $properties[] = array(
+        "System Usage (".$data['psPercentages']['percentageTimespanSeconds']." seconds average)",
+        " ".number_format($data['psPercentages']['busyPercent'], 2)."% busy,".
+        " ".number_format($data['psPercentages']['idlePercent'], 2)."% idle,".
+        " ".number_format($data['psPercentages']['ioWaitPercent'], 2)."% iowait,".
+        " ".number_format($data['psPercentages']['stealPercent'], 2)."% steal"
+    );
 }
 
 if (is_numeric($data['memoryInfo']['totalKByte']))
