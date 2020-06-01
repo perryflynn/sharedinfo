@@ -410,13 +410,16 @@ if (is_numeric($data['procStat']['idle']) && is_numeric($snapData['procStat']['i
 
     $snapTimeSpan = $data['snapshotTime'] - $snapData['snapshotTime'];
 
-    $psPercentages = array(
-        "percentageTimespanSeconds" => $snapTimeSpan,
-        "busyPercent" => 100 - (100 * $psIdleDiff / $psTotalDiff),
-        "idlePercent" => 100 * $psIdleDiff / $psTotalDiff,
-        "ioWaitPercent" => 100 * $psIoWaitDiff / $psTotalDiff,
-        "stealPercent" => 100 * $psStealDiff / $psTotalDiff,
-    );
+    if ($psTotalDiff != 0)
+    {
+        $psPercentages = array(
+            "percentageTimespanSeconds" => $snapTimeSpan,
+            "busyPercent" => 100 - (100 * $psIdleDiff / $psTotalDiff),
+            "idlePercent" => 100 * $psIdleDiff / $psTotalDiff,
+            "ioWaitPercent" => 100 * $psIoWaitDiff / $psTotalDiff,
+            "stealPercent" => 100 * $psStealDiff / $psTotalDiff,
+        );
+    }
 }
 
 $data['psPercentages'] = $psPercentages;
